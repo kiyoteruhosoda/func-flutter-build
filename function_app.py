@@ -72,7 +72,7 @@ def start_build(req: func.HttpRequest) -> func.HttpResponse:
                     name=aci_name,
                     image=aci_image,
                     resources=ResourceRequirements(
-                        requests=ResourceRequests(cpu=４.0, memory_in_gb=８.0)
+                        requests=ResourceRequests(cpu=4.0, memory_in_gb=8.0)
                     ),
                     environment_variables=[
                         EnvironmentVariable(name="GITHUB_REPO_URL", value=f"https://github.com/{github_repo}"),
