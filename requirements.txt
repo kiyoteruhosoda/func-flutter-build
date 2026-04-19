@@ -1,0 +1,6 @@
+azure-functions
+azure-identity
+azure-mgmt-containerinstance
+azure-mgmt-containerregistry
+azure-storage-blob
+requests

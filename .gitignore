@@ -205,3 +205,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Azure Functions
+local.settings.json
+.python_packages/
+bin/
+obj/
