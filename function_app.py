@@ -125,29 +125,38 @@ def aci_status(req: func.HttpRequest) -> func.HttpResponse:
 
         try:
             group = client.container_groups.get(aci_rg, aci_name)
-            container = group.containers[0]
-            state = container.instance_view.current_state if container.instance_view else None
-            logs = client.containers.list_logs(aci_rg, aci_name, aci_name)
+        except ResourceNotFoundError:
             result = {
-                "status": state.state if state else "Unknown",
-                "exit_code": state.exit_code if state else None,
-                "logs": logs.content if logs.content else ""
+                "status": "NotFound",
+                "exit_code": None,
+                "logs": "ACI is not running."
             }
-        except Exception as not_found:
-            if "ResourceNotFound" in str(not_found):
-                result = {
-                    "status": "NotFound",
-                    "exit_code": None,
-                    "logs": "ACI is not running."
-                }
-            else:
-                raise
+            return func.HttpResponse(json.dumps(result), mimetype="application/json", status_code=200)
 
+        container = group.containers[0]
+        state = container.instance_view.current_state if container.instance_view else None
+
+        logs_content = ""
+        try:
+            logs = client.containers.list_logs(aci_rg, aci_name, aci_name)
+            logs_content = logs.content or ""
+        except Exception as log_err:
+            logging.info(f"Logs not available yet: {log_err}")
+
+        result = {
+            "status": state.state if state else (group.provisioning_state or "Unknown"),
+            "exit_code": state.exit_code if state else None,
+            "logs": logs_content,
+        }
         return func.HttpResponse(json.dumps(result), mimetype="application/json", status_code=200)
 
     except Exception as e:
         logging.error(f"Exception: {traceback.format_exc()}")
-        return func.HttpResponse(f"Exception: {str(e)}", status_code=500)
+        return func.HttpResponse(
+            json.dumps({"status": "Error", "exit_code": None, "logs": str(e)}),
+            mimetype="application/json",
+            status_code=500,
+        )
 
 
 @app.route(route="stop-build", methods=["POST"])
