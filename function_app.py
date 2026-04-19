@@ -1,9 +1,11 @@
 import azure.functions as func
 import os
+import time
 import requests
 import logging
 import traceback
 import json
+from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import ManagedIdentityCredential
 from azure.mgmt.containerinstance import ContainerInstanceManagementClient
 from azure.mgmt.containerinstance.models import (
@@ -24,6 +26,19 @@ def get_aci_info():
     aci_name = os.environ["ACI_NAME"]
     aci_rg   = os.environ["ACI_RG"]
     return aci_name, aci_rg
+
+
+# azure-mgmt-containerinstance の LRO ポーラーには
+# "Operation returned an invalid status 'OK'" を誤って投げる既知の不具合がある。
+# .result() を使わず get() で存在確認することでバグを回避する。
+def wait_container_group_deleted(client, aci_rg, aci_name, timeout_sec=180):
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        try:
+            client.container_groups.get(aci_rg, aci_name)
+        except ResourceNotFoundError:
+            return
+        time.sleep(3)
 
 
 @app.route(route="start-build", methods=["POST"])
@@ -60,9 +75,10 @@ def start_build(req: func.HttpRequest) -> func.HttpResponse:
         client = get_aci_client()
 
         try:
-            client.container_groups.begin_delete(aci_rg, aci_name).result()
+            client.container_groups.begin_delete(aci_rg, aci_name)
+            wait_container_group_deleted(client, aci_rg, aci_name)
             logging.info("Existing ACI deleted")
-        except Exception:
+        except ResourceNotFoundError:
             logging.info("No existing ACI to delete")
 
         container_group = ContainerGroup(
@@ -91,8 +107,8 @@ def start_build(req: func.HttpRequest) -> func.HttpResponse:
             restart_policy=ContainerGroupRestartPolicy.NEVER
         )
 
-        client.container_groups.begin_create_or_update(aci_rg, aci_name, container_group).result()
-        logging.info("ACI started successfully")
+        client.container_groups.begin_create_or_update(aci_rg, aci_name, container_group)
+        logging.info("ACI create submitted (provisioning asynchronously)")
 
         return func.HttpResponse("ACI started successfully", status_code=200)
 
@@ -140,7 +156,8 @@ def stop_build(req: func.HttpRequest) -> func.HttpResponse:
         aci_name, aci_rg = get_aci_info()
         client = get_aci_client()
 
-        client.container_groups.begin_delete(aci_rg, aci_name).result()
+        client.container_groups.begin_delete(aci_rg, aci_name)
+        wait_container_group_deleted(client, aci_rg, aci_name)
         logging.info("ACI deleted successfully")
 
         return func.HttpResponse("ACI deleted successfully", status_code=200)
